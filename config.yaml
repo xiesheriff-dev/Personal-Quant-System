@@ -1,0 +1,10 @@
+# 注意：账户配置、股票池、量化策略、大模型配置均已全面迁移至 MySQL 数据库
+# 本文件仅保留数据库连接等系统级基础启动配置
+
+# 数据库配置 (MySQL)
+database:
+  host: "127.0.0.1"
+  port: 3306
+  user: "root"
+  password: "123456" # 请修改为你的 MySQL 密码
+  db_name: "stock_market_quantitative"
