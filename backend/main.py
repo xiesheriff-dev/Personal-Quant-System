@@ -721,10 +721,25 @@ async def get_stock_operations_api(ticker: Optional[str] = None, user_id: int = 
             op['created_at'] = op['created_at'].strftime("%Y-%m-%d %H:%M:%S")
     return {"status": "success", "data": operations}
 
+@app.get("/api/sectors", summary="获取所有板块/行业列表")
+async def get_sectors():
+    try:
+        import akshare as ak
+        # 尝试使用同花顺行业板块
+        sectors = ak.stock_board_industry_name_ths()
+        sector_list = sectors['name'].tolist()
+        return {"status": "success", "data": sector_list}
+    except Exception as e:
+        print(f"获取板块列表失败: {e}")
+        # 如果同花顺接口失败，提供一些默认的板块
+        default_sectors = ["半导体", "白酒", "白色家电", "保险", "包装印刷", "传媒", "电力", "房地产开发", "计算机应用", "煤炭", "汽车整车", "生物制品", "医疗器械", "证券", "中药"]
+        return {"status": "success", "data": default_sectors}
+
 class RecommendRequest(BaseModel):
     price: float
     count: int = 5
     user_id: int = 1
+    sectors: Optional[list[str]] = None
 
 @app.post("/api/recommend_stocks", summary="AI根据价格推荐股票")
 async def recommend_stocks_api(req: RecommendRequest):
@@ -809,13 +824,19 @@ async def recommend_stocks_api(req: RecommendRequest):
             print(f"备用行情获取也失败: {fallback_e}")
             candidates_str = "（实时行情服务暂时不可用，请完全根据自身知识库推荐）"
 
+    sector_pref = ""
+    if req.sectors and len(req.sectors) > 0:
+        sectors_str = "、".join(req.sectors)
+        sector_pref = f"4. 板块偏好：请优先推荐属于以下板块/行业的股票：【{sectors_str}】。\n"
+
     prompt = (
         f"作为专业的A股量化投资顾问，请从以下【实时初筛股票池】中精选出 {req.count} 只最优质的A股股票推荐给我。\n\n"
         f"{candidates_str}\n\n"
         "为了保证推荐质量，请遵循以下选股标准对候选股票进行二次深度过滤（如果候选池不足，可补充你认为符合条件的股票）：\n"
         "1. 行业地位：优先选择行业龙头或具有宽广护城河的公司。\n"
         "2. 财务健康：具有稳定的盈利能力，ROE（净资产收益率）常年保持在10%以上。\n"
-        "3. 估值合理：结合候选池中的PE数据（如有），避免推荐被严重爆炒、估值过高的题材股。\n\n"
+        "3. 估值合理：结合候选池中的PE数据（如有），避免推荐被严重爆炒、估值过高的题材股。\n"
+        f"{sector_pref}\n"
         "输出要求：\n"
         "1. 仅返回纯JSON格式数组，不要任何其他解释性文本，不要markdown代码块。\n"
         "2. JSON数组中每个对象包含两个字段：'ticker'（代码，必须以sh或sz开头，如 sh600036）和 'name'（股票中文名）。\n"

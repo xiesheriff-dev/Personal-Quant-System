@@ -90,7 +90,7 @@
     </el-dialog>
 
     <!-- AI选股弹窗 -->
-    <el-dialog v-model="dialogVisible" title="AI选股推荐" width="500px">
+    <el-dialog v-model="dialogVisible" title="AI选股推荐" width="500px" @open="fetchSectors">
       <el-form label-width="100px">
         <el-form-item label="期望价格(元)">
           <el-input-number v-model="targetPrice" :min="1" :max="2000" />
@@ -98,9 +98,26 @@
         <el-form-item label="推荐数量(只)">
           <el-input-number v-model="recommendCount" :min="1" :max="20" />
         </el-form-item>
+        <el-form-item label="偏好板块">
+          <el-select
+            v-model="selectedSectors"
+            multiple
+            filterable
+            placeholder="请选择板块 (可选)"
+            style="width: 100%"
+            :loading="sectorsLoading"
+          >
+            <el-option
+              v-for="item in sectorOptions"
+              :key="item"
+              :label="item"
+              :value="item"
+            />
+          </el-select>
+        </el-form-item>
       </el-form>
       <div style="font-size: 12px; color: #909399; margin-left: 100px;">
-        AI 将根据目标价格推荐 {{ recommendCount }} 只优质 A 股，并自动添加到股票池中。
+        AI 将根据目标价格和所选板块推荐 {{ recommendCount }} 只优质 A 股，并自动添加到股票池中。
       </div>
       <template #footer>
         <span class="dialog-footer">
@@ -177,7 +194,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { recommendStocks, addStock, deleteStock, getUserStocks, addStockOperation, getStockOperations, updateStockStats, calculateStockProfit } from '../api';
+import { recommendStocks, addStock, deleteStock, getUserStocks, addStockOperation, getStockOperations, updateStockStats, calculateStockProfit, getSectors } from '../api';
 import dayjs from 'dayjs';
 
 const tableData = ref([]);
@@ -207,6 +224,25 @@ const dialogVisible = ref(false);
 const targetPrice = ref(20);
 const recommendCount = ref(5);
 const recommending = ref(false);
+
+const sectorOptions = ref([]);
+const selectedSectors = ref([]);
+const sectorsLoading = ref(false);
+
+const fetchSectors = async () => {
+  if (sectorOptions.value.length > 0) return; // 已经加载过了就不再加载
+  sectorsLoading.value = true;
+  try {
+    const res = await getSectors();
+    if (res.data.status === 'success') {
+      sectorOptions.value = res.data.data;
+    }
+  } catch (error) {
+    ElMessage.error('获取板块列表失败');
+  } finally {
+    sectorsLoading.value = false;
+  }
+};
 
 const manualDialogVisible = ref(false);
 const manualCode = ref('');
@@ -254,7 +290,7 @@ const handleRecommend = async () => {
   if (!targetPrice.value) return ElMessage.warning('请输入期望价格');
   recommending.value = true;
   try {
-    const res = await recommendStocks(targetPrice.value, recommendCount.value);
+    const res = await recommendStocks(targetPrice.value, recommendCount.value, selectedSectors.value);
     if (res.data.status === 'success') {
       ElMessage.success('推荐并添加成功！');
       dialogVisible.value = false;
