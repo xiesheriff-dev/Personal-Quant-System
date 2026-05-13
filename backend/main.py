@@ -736,10 +736,12 @@ async def get_sectors():
         return {"status": "success", "data": default_sectors}
 
 class RecommendRequest(BaseModel):
-    price: float
+    min_price: Optional[float] = None
+    max_price: Optional[float] = None
     count: int = 5
     user_id: int = 1
     sectors: Optional[list[str]] = None
+    custom_logic: Optional[str] = None
 
 @app.post("/api/recommend_stocks", summary="AI根据价格推荐股票")
 async def recommend_stocks_api(req: RecommendRequest):
@@ -769,13 +771,13 @@ async def recommend_stocks_api(req: RecommendRequest):
         df_spot['市盈率-动态'] = pd.to_numeric(df_spot['市盈率-动态'], errors='coerce')
         df_spot = df_spot.dropna(subset=['最新价', '市盈率-动态'])
         
-        # 过滤条件：价格区间 ±20%，PE 0-30，剔除ST/退市，仅限沪深A股
-        min_price = req.price * 0.8
-        max_price = req.price * 1.2
+        # 过滤条件：价格区间，PE 0-30，剔除ST/退市，仅限沪深A股
+        min_price_val = req.min_price if req.min_price is not None else 0.0
+        max_price_val = req.max_price if req.max_price is not None else 99999.0
         
         mask = (
-            (df_spot['最新价'] >= min_price) & 
-            (df_spot['最新价'] <= max_price) & 
+            (df_spot['最新价'] >= min_price_val) & 
+            (df_spot['最新价'] <= max_price_val) & 
             (df_spot['市盈率-动态'] > 0) & 
             (df_spot['市盈率-动态'] < 30) &
             (~df_spot['名称'].str.contains('ST|退', na=False)) &
@@ -801,12 +803,12 @@ async def recommend_stocks_api(req: RecommendRequest):
             df_spot = ak.stock_zh_a_spot()
             df_spot['最新价'] = pd.to_numeric(df_spot['最新价'], errors='coerce')
             df_spot = df_spot.dropna(subset=['最新价'])
-            min_price = req.price * 0.8
-            max_price = req.price * 1.2
+            min_price_val = req.min_price if req.min_price is not None else 0.0
+            max_price_val = req.max_price if req.max_price is not None else 99999.0
             # 新浪API的A股代码带有sh/sz前缀或者bj前缀，或者纯数字？Sina通常是sh/sz前缀
             mask = (
-                (df_spot['最新价'] >= min_price) & 
-                (df_spot['最新价'] <= max_price) & 
+                (df_spot['最新价'] >= min_price_val) & 
+                (df_spot['最新价'] <= max_price_val) & 
                 (~df_spot['名称'].str.contains('ST|退', na=False)) &
                 (df_spot['代码'].str.startswith(('sh60', 'sz00', 'sz30')))
             )
@@ -828,6 +830,10 @@ async def recommend_stocks_api(req: RecommendRequest):
     if req.sectors and len(req.sectors) > 0:
         sectors_str = "、".join(req.sectors)
         sector_pref = f"4. 板块偏好：请优先推荐属于以下板块/行业的股票：【{sectors_str}】。\n"
+        
+    logic_pref = ""
+    if req.custom_logic and req.custom_logic.strip():
+        logic_pref = f"5. 用户自定义逻辑：{req.custom_logic.strip()}。\n"
 
     prompt = (
         f"作为专业的A股量化投资顾问，请从以下【实时初筛股票池】中精选出 {req.count} 只最优质的A股股票推荐给我。\n\n"
@@ -836,7 +842,8 @@ async def recommend_stocks_api(req: RecommendRequest):
         "1. 行业地位：优先选择行业龙头或具有宽广护城河的公司。\n"
         "2. 财务健康：具有稳定的盈利能力，ROE（净资产收益率）常年保持在10%以上。\n"
         "3. 估值合理：结合候选池中的PE数据（如有），避免推荐被严重爆炒、估值过高的题材股。\n"
-        f"{sector_pref}\n"
+        f"{sector_pref}"
+        f"{logic_pref}\n"
         "输出要求：\n"
         "1. 仅返回纯JSON格式数组，不要任何其他解释性文本，不要markdown代码块。\n"
         "2. JSON数组中每个对象包含两个字段：'ticker'（代码，必须以sh或sz开头，如 sh600036）和 'name'（股票中文名）。\n"

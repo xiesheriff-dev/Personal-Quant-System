@@ -45,8 +45,8 @@ export const chatWithLLM = (ticker, messages, userId = getUserId()) => {
 
 const getUserId = () => localStorage.getItem('user_id') || 1;
 
-export const recommendStocks = (price, count, sectors, userId = getUserId()) => {
-  return api.post('/recommend_stocks', { price, count, sectors, user_id: userId });
+export const recommendStocks = (payload) => {
+  return api.post('/recommend_stocks', payload);
 };
 
 export const getSectors = () => {
